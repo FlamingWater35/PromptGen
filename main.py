@@ -25,6 +25,9 @@ FALLBACK_IGNORE_DIRS = {
     "build",
     "dist",
     "*.egg-info",
+    ".git",
+    ".hg",
+    ".svn",
 }
 FALLBACK_IGNORE_FILES = {".DS_Store", "*.pyc", "*.log", "*.swp", "*.swo"}
 MAX_FILE_SIZE_BYTES = 1 * 1024 * 1024
@@ -38,9 +41,17 @@ def _is_custom_ignored(item_path, project_root_path, custom_patterns):
     try:
         abs_item_path = item_path.resolve()
         abs_project_root_path = project_root_path.resolve()
-        relative_item_path_str = str(abs_item_path.relative_to(abs_project_root_path))
+        if not abs_item_path.is_relative_to(abs_project_root_path):
+            relative_item_path_str = None
+        else:
+            relative_item_path_str = str(
+                abs_item_path.relative_to(abs_project_root_path)
+            )
+    except ValueError:
+        relative_item_path_str = None
     except Exception:
         relative_item_path_str = None
+
     for pattern_str in custom_patterns:
         pattern = pattern_str.strip()
         if not pattern:
@@ -83,7 +94,10 @@ def build_file_tree_string(
         item_path_obj = folder_path / item_name
         is_dir = item_path_obj.is_dir()
         if is_dir and item_name.startswith("."):
-            continue
+            if item_name not in FALLBACK_IGNORE_DIRS:
+                pass
+            if item_name in FALLBACK_IGNORE_DIRS:
+                continue
         if (
             use_gitignore_flag
             and gitignore_matcher
@@ -95,10 +109,14 @@ def build_file_tree_string(
         ):
             continue
         if is_dir:
-            if item_name in FALLBACK_IGNORE_DIRS or any(
-                fnmatch.fnmatch(item_name, pat)
-                for pat in FALLBACK_IGNORE_DIRS
-                if "*" in pat
+            if (
+                item_name in FALLBACK_IGNORE_DIRS
+                or any(
+                    fnmatch.fnmatch(item_name, pat)
+                    for pat in FALLBACK_IGNORE_DIRS
+                    if "*" in pat
+                )
+                or item_name.startswith(".")
             ):
                 continue
         else:
@@ -210,6 +228,8 @@ class LLMPromptApp(ctk.CTk):
             except Exception:
                 pass
             self.progress_popup = None
+        if self.config_toplevel and self.config_toplevel.winfo_exists():
+            self._close_config_manager()
         if self.executor:
             logging.debug("Shutting down thread pool executor...")
             self.executor.shutdown(wait=True, cancel_futures=True)
@@ -545,51 +565,108 @@ class LLMPromptApp(ctk.CTk):
         )
 
     def _repopulate_main_files_task(
-        self, folder_path_obj, gitignore_matcher, custom_patterns, project_root_path
+        self,
+        folder_path_obj,
+        gitignore_matcher,
+        use_gitignore_flag,
+        custom_patterns,
+        project_root_path_for_custom_ignore,
     ):
-        logging.debug(f"Task: Repopulating main files from {folder_path_obj}")
+        logging.debug(
+            f"Task: Repopulating main files from {folder_path_obj} (recursive)"
+        )
         main_files = []
-        display_lines = [f"Selected Folder: {folder_path_obj.name}", "Files within:"]
+        display_lines = [
+            f"Selected Folder: {folder_path_obj.name}",
+            "Files within (including subdirectories):",
+        ]
         try:
             found_any = False
-            for item_name in sorted(os.listdir(folder_path_obj), key=str.lower):
-                item_path = folder_path_obj / item_name
-                if not item_path.is_file():
-                    continue
-                if (
-                    self.use_gitignore_var.get()
-                    and gitignore_matcher
-                    and gitignore_matcher(item_path)
-                ):
-                    continue
-                if project_root_path and _is_custom_ignored(
-                    item_path, project_root_path, custom_patterns
-                ):
-                    continue
-                is_fallback_ignored = False
-                if item_name in FALLBACK_IGNORE_FILES or any(
-                    fnmatch.fnmatch(item_name, pat)
-                    for pat in FALLBACK_IGNORE_FILES
-                    if "*" in pat
-                ):
-                    is_fallback_ignored = True
-                if (
-                    not is_fallback_ignored
-                    and item_name.startswith(".")
-                    and item_name not in [".gitignore", ".gitattributes", ".gitmodules"]
-                ):
-                    is_fallback_ignored = True
-                if is_fallback_ignored:
-                    continue
+            for root, dirs, files in os.walk(str(folder_path_obj), topdown=True):
+                dirs_to_process = list(dirs)
+                dirs[:] = []
 
-                main_files.append(str(item_path))
-                display_lines.append(f"- {item_name}")
-                found_any = True
+                for d_name in dirs_to_process:
+                    dir_path = Path(root) / d_name
+
+                    if d_name.startswith(".") and d_name not in FALLBACK_IGNORE_DIRS:
+                        continue
+
+                    if (
+                        use_gitignore_flag
+                        and gitignore_matcher
+                        and gitignore_matcher(dir_path)
+                    ):
+                        continue
+
+                    if _is_custom_ignored(
+                        dir_path, project_root_path_for_custom_ignore, custom_patterns
+                    ):
+                        continue
+
+                    if d_name in FALLBACK_IGNORE_DIRS or any(
+                        fnmatch.fnmatch(d_name, pat)
+                        for pat in FALLBACK_IGNORE_DIRS
+                        if "*" in pat
+                    ):
+                        continue
+
+                    dirs.append(d_name)
+
+                for item_name in sorted(files, key=str.lower):
+                    item_path = Path(root) / item_name
+
+                    if (
+                        use_gitignore_flag
+                        and gitignore_matcher
+                        and gitignore_matcher(item_path)
+                    ):
+                        continue
+
+                    if project_root_path_for_custom_ignore and _is_custom_ignored(
+                        item_path, project_root_path_for_custom_ignore, custom_patterns
+                    ):
+                        continue
+
+                    is_fallback_ignored = False
+                    if item_name in FALLBACK_IGNORE_FILES or any(
+                        fnmatch.fnmatch(item_name, pat)
+                        for pat in FALLBACK_IGNORE_FILES
+                        if "*" in pat
+                    ):
+                        is_fallback_ignored = True
+
+                    if (
+                        not is_fallback_ignored
+                        and item_name.startswith(".")
+                        and item_name
+                        not in [".gitignore", ".gitattributes", ".gitmodules"]
+                    ):
+                        is_fallback_ignored = True
+
+                    if is_fallback_ignored:
+                        continue
+
+                    main_files.append(str(item_path.resolve()))
+
+                    try:
+                        relative_display_path = item_path.relative_to(folder_path_obj)
+                    except ValueError:
+                        relative_display_path = item_path
+
+                    display_lines.append(
+                        f"- {str(relative_display_path).replace(os.sep, '/')}"
+                    )
+                    found_any = True
+
             if not found_any:
-                display_lines.append("(No files found or all files ignored)")
+                display_lines.append(
+                    "(No files found or all files ignored in this folder and its subdirectories)"
+                )
         except Exception as e:
             logging.error(
-                f"Error in _repopulate_main_files_task for {folder_path_obj}: {e}"
+                f"Error in _repopulate_main_files_task for {folder_path_obj}: {e}",
+                exc_info=True,
             )
             display_lines.append(f"[Error accessing folder: {e}]")
         return main_files, "\n".join(display_lines)
@@ -636,6 +713,7 @@ class LLMPromptApp(ctk.CTk):
             for file_path_str in main_file_paths_list:
                 file_p = Path(file_path_str)
                 relative_path_str = file_p.name
+
                 if project_root_path_obj:
                     try:
                         abs_file_p = file_p.resolve()
@@ -645,13 +723,16 @@ class LLMPromptApp(ctk.CTk):
                                 abs_file_p.relative_to(abs_project_root)
                             )
                         else:
-                            candidate = os.path.relpath(abs_file_p, abs_project_root)
-                            if not os.path.isabs(
-                                candidate
-                            ) and not candidate.startswith(".."):
-                                relative_path_str = candidate
+                            candidate_rel_path = os.path.relpath(
+                                abs_file_p, abs_project_root
+                            )
+                            relative_path_str = candidate_rel_path
+
+                    except ValueError:
+                        relative_path_str = file_p.name
                     except Exception:
-                        pass
+                        relative_path_str = file_p.name
+
                 prompt_parts.append(
                     f"--- File: {relative_path_str.replace(os.sep, '/')} ---"
                 )
@@ -732,15 +813,13 @@ class LLMPromptApp(ctk.CTk):
         ):
             logging.debug("Orchestrator: Step 2 (Main Files Folder)")
             self._chain_step = "main_files_done"
-            current_gitignore_matcher = (
-                self.gitignore_matcher if self.use_gitignore_var.get() else None
-            )
             custom_patterns = self._get_custom_ignore_patterns()
             self._submit_task(
                 self._repopulate_main_files_task,
                 self._update_main_files_folder_ui,
                 self.main_files_selected_folder_path,
-                current_gitignore_matcher,
+                self.gitignore_matcher,
+                self.use_gitignore_var.get(),
                 custom_patterns,
                 self.project_folder_path,
             )
@@ -790,7 +869,8 @@ class LLMPromptApp(ctk.CTk):
 
     def _load_gitignore(self):
         self.gitignore_matcher = lambda path_to_check: False
-        self.use_gitignore_checkbox.configure(state="normal")
+        if self.use_gitignore_checkbox.winfo_exists():
+            self.use_gitignore_checkbox.configure(state="normal")
         try:
             from gitignore_parser import parse_gitignore
 
@@ -809,7 +889,8 @@ class LLMPromptApp(ctk.CTk):
                     logging.info(f".gitignore not found in {self.project_folder_path}")
         except ImportError:
             logging.warning("gitignore_parser not found. .gitignore disabled.")
-            self.use_gitignore_checkbox.configure(state="disabled")
+            if self.use_gitignore_checkbox.winfo_exists():
+                self.use_gitignore_checkbox.configure(state="disabled")
             self.use_gitignore_var.set(False)
         except Exception as e:
             logging.error(f"Error in _load_gitignore: {e}")
@@ -839,23 +920,27 @@ class LLMPromptApp(ctk.CTk):
             self.select_main_folder_button.grid(row=0, column=0, sticky="ew")
         else:
             self.select_individual_files_button.grid(row=0, column=0, sticky="ew")
-        self.main_file_paths = []
-        self.main_files_selected_folder_path = None
-        self._set_textbox_content(self.selected_main_files_textbox, "")
-        self.trigger_generate_prompt_stand_alone()
+
+        if self.main_file_paths or self.main_files_selected_folder_path:
+            self.main_file_paths = []
+            self.main_files_selected_folder_path = None
+            self._set_textbox_content(self.selected_main_files_textbox, "")
+            self.trigger_generate_prompt_stand_alone()
 
     def select_main_files_folder(self):
         logging.debug("Selecting main files folder...")
         if not self.project_folder_path:
             CTkMessagebox(
                 title="No Project",
-                message="Please open a project folder first.",
+                message="Please open a project folder first (for context like .gitignore and project-relative ignores).",
                 icon="warning",
             )
             return
+
+        start_dir = str(self.project_folder_path) if self.project_folder_path else None
         folder_path_str = filedialog.askdirectory(
-            title="Select Folder Containing Main Files",
-            initialdir=str(self.project_folder_path),
+            title="Select Folder Containing Main Files (will include subdirectories)",
+            initialdir=start_dir,
         )
         if folder_path_str:
             self.main_files_selected_folder_path = Path(folder_path_str)
@@ -875,18 +960,34 @@ class LLMPromptApp(ctk.CTk):
                 icon="warning",
             )
             return
+
+        start_dir = str(self.project_folder_path) if self.project_folder_path else None
         file_paths_tuple = filedialog.askopenfilenames(
             title="Select Individual Main Files",
-            initialdir=str(self.project_folder_path),
+            initialdir=start_dir,
         )
         if file_paths_tuple:
-            self.main_file_paths = [str(Path(p)) for p in file_paths_tuple]
+            self.main_file_paths = [str(Path(p).resolve()) for p in file_paths_tuple]
             logging.info(f"Individual main files selected: {self.main_file_paths}")
             self.main_files_selected_folder_path = None
-            display_text = "Selected Files:\n" + "\n".join(
-                [f"- {Path(p).name}" for p in self.main_file_paths]
+
+            display_lines = ["Selected Individual Files:"]
+            for p_str in self.main_file_paths:
+                p_obj = Path(p_str)
+                display_name = p_obj.name
+                if self.project_folder_path:
+                    try:
+                        abs_p_obj = p_obj.resolve()
+                        abs_proj_root = self.project_folder_path.resolve()
+                        if abs_p_obj.is_relative_to(abs_proj_root):
+                            display_name = str(abs_p_obj.relative_to(abs_proj_root))
+                    except:
+                        pass
+                display_lines.append(f"- {display_name.replace(os.sep, '/')}")
+
+            self._set_textbox_content(
+                self.selected_main_files_textbox, "\n".join(display_lines)
             )
-            self._set_textbox_content(self.selected_main_files_textbox, display_text)
             self.trigger_generate_prompt_stand_alone()
 
     def copy_prompt(self):
@@ -911,6 +1012,15 @@ class LLMPromptApp(ctk.CTk):
                 icon="cancel",
             )
 
+    def _close_config_manager(self):
+        if self.config_toplevel and self.config_toplevel.winfo_exists():
+            try:
+                self.config_toplevel.grab_release()
+                self.config_toplevel.destroy()
+            except Exception as e:
+                logging.warning(f"Error closing config manager: {e}")
+        self.config_toplevel = None
+
     def _open_config_manager(self):
         if self.config_toplevel and self.config_toplevel.winfo_exists():
             self.config_toplevel.focus()
@@ -920,13 +1030,14 @@ class LLMPromptApp(ctk.CTk):
         self.config_toplevel.title("Configuration Manager")
         window_width = 600
         window_height = 400
-        
+
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2
         self.config_toplevel.geometry(f"{window_width}x{window_height}+{x}+{y}")
         self.config_toplevel.grab_set()
+        self.config_toplevel.protocol("WM_DELETE_WINDOW", self._close_config_manager)
 
         left_frame = ctk.CTkFrame(self.config_toplevel)
         left_frame.pack(side="left", fill="y", padx=10, pady=10)
@@ -955,6 +1066,7 @@ class LLMPromptApp(ctk.CTk):
             text="Delete Selected",
             command=self._delete_selected_config,
             fg_color="red",
+            hover_color="darkred",
         ).pack(fill="x", pady=5, padx=10)
         ctk.CTkButton(
             right_frame, text="Refresh List", command=self._populate_config_listbox
@@ -973,12 +1085,27 @@ class LLMPromptApp(ctk.CTk):
             or not self.config_listbox.winfo_exists()
         ):
             return
+
+        current_selection = self.config_listbox.get()
         self.config_listbox.delete("all")
+
         if not self.config_dir.exists():
             return
 
         for i, f_path in enumerate(sorted(self.config_dir.glob("*.ini"))):
             self.config_listbox.insert(i, f_path.stem)
+
+        if current_selection:
+            try:
+                all_items = [
+                    self.config_listbox.get(i)
+                    for i in range(self.config_listbox.size())
+                ]
+                if current_selection in all_items:
+                    idx = all_items.index(current_selection)
+                    self.config_listbox.select(idx)
+            except Exception:
+                pass
 
     def _save_current_config(self):
         name = self.config_name_entry.get().strip()
@@ -990,7 +1117,7 @@ class LLMPromptApp(ctk.CTk):
                 icon="cancel",
             )
             return
-        if not name.isalnum() and "_" not in name and "-" not in name:
+        if not all(c.isalnum() or c in ["_", "-"] for c in name):
             CTkMessagebox(
                 master=self.config_toplevel,
                 title="Error",
@@ -1029,31 +1156,26 @@ class LLMPromptApp(ctk.CTk):
             )
 
     def _load_selected_config(self):
-        try:
-            selected_index = self.config_listbox.curselection()
-            if selected_index is None or selected_index < 0:
-                selected_name = self.config_listbox.get()
-                if not selected_name:
-                    CTkMessagebox(
-                        master=self.config_toplevel,
-                        title="Error",
-                        message="No configuration selected to load.",
-                        icon="warning",
-                    )
-                    return
-            else:
-                selected_name = self.config_listbox.get(selected_index)
+        selected_name_from_list = None
+        if hasattr(self, "config_listbox") and self.config_listbox.winfo_exists():
+            selected_name_from_list = self.config_listbox.get()
 
-        except Exception:
-            selected_name = self.config_name_entry.get().strip()
-            if not selected_name:
-                CTkMessagebox(
-                    master=self.config_toplevel,
-                    title="Error",
-                    message="No configuration selected/named to load.",
-                    icon="warning",
-                )
-                return
+        selected_name_from_entry = self.config_name_entry.get().strip()
+
+        selected_name = None
+        if selected_name_from_list:
+            selected_name = selected_name_from_list
+        elif selected_name_from_entry:
+            selected_name = selected_name_from_entry
+
+        if not selected_name:
+            CTkMessagebox(
+                master=self.config_toplevel,
+                title="Error",
+                message="No configuration selected or named to load.",
+                icon="warning",
+            )
+            return
 
         file_path = self.config_dir / f"{selected_name}.ini"
         if not file_path.exists():
@@ -1075,13 +1197,16 @@ class LLMPromptApp(ctk.CTk):
             self._set_textbox_content(self.custom_ignore_textbox, custom_ignores)
 
             logging.info(f"Loaded configuration: {selected_name}")
+
+            self._close_config_manager()
+
             CTkMessagebox(
-                master=self.config_toplevel,
+                master=self,
                 title="Success",
                 message=f"Configuration '{selected_name}' loaded.",
                 icon="check",
             )
-            self.config_toplevel.destroy()
+
             self._debounced_refresh_all_views_and_prompt()
         except Exception as e:
             logging.error(f"Error loading configuration '{selected_name}': {e}")
@@ -1093,26 +1218,26 @@ class LLMPromptApp(ctk.CTk):
             )
 
     def _delete_selected_config(self):
-        try:
-            selected_name = self.config_listbox.get()
-            if not selected_name:
-                CTkMessagebox(
-                    master=self.config_toplevel,
-                    title="Error",
-                    message="No configuration selected to delete.",
-                    icon="warning",
-                )
-                return
-        except Exception:
-            selected_name = self.config_name_entry.get().strip()
-            if not selected_name:
-                CTkMessagebox(
-                    master=self.config_toplevel,
-                    title="Error",
-                    message="No configuration selected/named to delete.",
-                    icon="warning",
-                )
-                return
+        selected_name_from_list = None
+        if hasattr(self, "config_listbox") and self.config_listbox.winfo_exists():
+            selected_name_from_list = self.config_listbox.get()
+
+        selected_name_from_entry = self.config_name_entry.get().strip()
+
+        selected_name = None
+        if selected_name_from_list:
+            selected_name = selected_name_from_list
+        elif selected_name_from_entry:
+            selected_name = selected_name_from_entry
+
+        if not selected_name:
+            CTkMessagebox(
+                master=self.config_toplevel,
+                title="Error",
+                message="No configuration selected or named to delete.",
+                icon="warning",
+            )
+            return
 
         msg = CTkMessagebox(
             master=self.config_toplevel,
@@ -1134,7 +1259,8 @@ class LLMPromptApp(ctk.CTk):
                     message=f"Configuration '{selected_name}' deleted.",
                     icon="check",
                 )
-                self.config_name_entry.delete(0, "end")
+                if self.config_name_entry.get().strip() == selected_name:
+                    self.config_name_entry.delete(0, "end")
                 self._populate_config_listbox()
             except Exception as e:
                 logging.error(f"Error deleting configuration '{selected_name}': {e}")
