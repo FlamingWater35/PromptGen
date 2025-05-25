@@ -319,9 +319,7 @@ class LLMPromptApp(ctk.CTk):
             self.right_pane, wrap="word", height=150
         )
         self.instructions_textbox.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
-        self.instructions_textbox.insert(
-            "0.0", "Improve my code by..."
-        )
+        self.instructions_textbox.insert("0.0", "Improve my code by...")
         self.instructions_textbox.bind("<KeyRelease>", self._on_instructions_typed)
         ctk.CTkLabel(
             self.right_pane, text="Main Files Source:", font=ctk.CTkFont(weight="bold")

@@ -1,8 +1,14 @@
+# GUI
 customtkinter
-pyperclip
-gitignore_parser
-configparser
 CTkListbox
 CTkMessagebox
 ctkcomponents
+
+# Features
+pyperclip
+gitignore_parser
+configparser
+
+# Formatting and compiling
 black
+nuitka
