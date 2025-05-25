@@ -202,7 +202,7 @@ class LLMPromptApp(ctk.CTk):
         self.custom_ignore_debounce_timer = None
         self.instructions_debounce_timer = None
 
-        self.config_dir = Path.home() / "Documents" / "LLMPromptInitializerConfigs"
+        self.config_dir = Path.home() / "Documents" / "PromptGenConfigs"
         try:
             self.config_dir.mkdir(parents=True, exist_ok=True)
             logging.info(f"Configuration directory: {self.config_dir}")
@@ -320,7 +320,7 @@ class LLMPromptApp(ctk.CTk):
         )
         self.instructions_textbox.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         self.instructions_textbox.insert(
-            "0.0", "Please act as a senior software engineer..."
+            "0.0", "Improve my code by..."
         )
         self.instructions_textbox.bind("<KeyRelease>", self._on_instructions_typed)
         ctk.CTkLabel(
@@ -372,7 +372,7 @@ class LLMPromptApp(ctk.CTk):
         self.final_prompt_frame.grid_columnconfigure(1, weight=0)
         ctk.CTkLabel(
             self.final_prompt_frame,
-            text="Final Prompt:",
+            text="Final Prompt (gets updated automatically):",
             font=ctk.CTkFont(weight="bold"),
         ).grid(row=0, column=0, columnspan=2, padx=5, pady=(5, 0), sticky="w")
         self.final_prompt_textbox = ctk.CTkTextbox(
@@ -394,14 +394,14 @@ class LLMPromptApp(ctk.CTk):
             text="Manage Configs",
             command=self._open_config_manager,
         )
-        self.manage_configs_button.pack(side="left", padx=(0, 10))
+        self.manage_configs_button.pack(side="left", padx=(0, 10), pady=(0, 5))
 
         self.copy_prompt_button = ctk.CTkButton(
             self.final_prompt_buttons_frame,
             text="Copy Prompt",
             command=self.copy_prompt,
         )
-        self.copy_prompt_button.pack(side="left")
+        self.copy_prompt_button.pack(side="left", padx=(0, 5), pady=(0, 5))
 
         self._controls_to_disable_while_loading = [
             self.open_project_button,
