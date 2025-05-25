@@ -1,3 +1,5 @@
+import sys
+import tempfile
 import customtkinter as ctk
 from tkinter import filedialog
 from CTkMessagebox import CTkMessagebox
@@ -17,6 +19,22 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - [%(funcName)s] - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
+
+
+def resource_path(relative_path):
+    try:
+        base_path = Path(sys._MEIPASS)  # Nuitka or Pyinstaller (bundled app)
+    except AttributeError:
+        base_path = Path(os.path.abspath(os.path.dirname(__file__)))  # Development
+
+    full_path = os.path.join(base_path, relative_path)
+
+    if not os.path.exists(full_path):
+        logging.error(f"Resource not found: '{full_path}'")
+        return None
+
+    return full_path
+
 
 FALLBACK_IGNORE_DIRS = {
     "__pycache__",
@@ -182,6 +200,8 @@ class LLMPromptApp(ctk.CTk):
         y = (screen_height - window_height) // 2
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
+        self.icon_path = resource_path("docs/icon.ico")
+        self.iconbitmap(self.icon_path, default=self.icon_path)
         ctk.set_appearance_mode("System")
         ctk.set_default_color_theme("blue")
 
@@ -1034,7 +1054,11 @@ class LLMPromptApp(ctk.CTk):
         x = (screen_width - window_width) // 2
         y = (screen_height - window_height) // 2
         self.config_toplevel.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
         self.config_toplevel.grab_set()
+        self.config_toplevel.after(
+            200, lambda: self.config_toplevel.iconbitmap(self.icon_path)
+        )
         self.config_toplevel.protocol("WM_DELETE_WINDOW", self._close_config_manager)
 
         left_frame = ctk.CTkFrame(self.config_toplevel)
