@@ -1,0 +1,8 @@
+customtkinter
+pyperclip
+gitignore_parser
+configparser
+CTkListbox
+CTkMessagebox
+ctkcomponents
+black
