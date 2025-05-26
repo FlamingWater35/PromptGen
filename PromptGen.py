@@ -14,7 +14,7 @@ import concurrent.futures
 import configparser
 
 logging.basicConfig(
-    level=logging.INFO, # Set to DEBUG if issues arise
+    level=logging.INFO,  # Set to DEBUG if issues arise
     format="%(asctime)s - %(levelname)s - [%(funcName)s] - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -89,9 +89,7 @@ def _is_custom_ignored(
         if not pattern:
             continue
 
-        if fnmatch.fnmatch(
-            item_name, pattern
-        ):
+        if fnmatch.fnmatch(item_name, pattern):
             return True
 
         if relative_item_path_str:
@@ -103,9 +101,7 @@ def _is_custom_ignored(
                     norm_rel_path + "/", norm_pattern
                 ):
                     return True
-            elif fnmatch.fnmatch(
-                norm_rel_path, norm_pattern
-            ):
+            elif fnmatch.fnmatch(norm_rel_path, norm_pattern):
                 return True
     return False
 
@@ -184,9 +180,7 @@ def build_file_tree_string(
 
     visible_items_data.sort(key=lambda x: (not x[2], x[0].lower()))
 
-    for i, (item_name, item_path_obj, is_dir_val) in enumerate(
-        visible_items_data
-    ):
+    for i, (item_name, item_path_obj, is_dir_val) in enumerate(visible_items_data):
         is_last = i == len(visible_items_data) - 1
         connector = "└── " if is_last else "├── "
         if is_dir_val:
@@ -310,24 +304,12 @@ class LLMPromptApp(ctk.CTk):
     def _setup_ui(self):
         self.grid_columnconfigure(0, weight=2)
         self.grid_columnconfigure(1, weight=3)
-        self.grid_rowconfigure(
-            0, weight=self.default_row_weights.get(0, 0)
-        )
-        self.grid_rowconfigure(
-            1, weight=self.default_row_weights.get(1, 0)
-        )
-        self.grid_rowconfigure(
-            2, weight=self.default_row_weights.get(2, 0)
-        )
-        self.grid_rowconfigure(
-            3, weight=self.default_row_weights.get(3, 0)
-        )
-        self.grid_rowconfigure(
-            4, weight=self.default_row_weights.get(4, 0)
-        )
-        self.grid_rowconfigure(
-            5, weight=self.default_row_weights.get(5, 0)
-        )
+        self.grid_rowconfigure(0, weight=self.default_row_weights.get(0, 0))
+        self.grid_rowconfigure(1, weight=self.default_row_weights.get(1, 0))
+        self.grid_rowconfigure(2, weight=self.default_row_weights.get(2, 0))
+        self.grid_rowconfigure(3, weight=self.default_row_weights.get(3, 0))
+        self.grid_rowconfigure(4, weight=self.default_row_weights.get(4, 0))
+        self.grid_rowconfigure(5, weight=self.default_row_weights.get(5, 0))
 
         self.top_controls_frame = ctk.CTkFrame(self, fg_color="transparent")
         self.top_controls_frame.grid(
@@ -433,7 +415,7 @@ class LLMPromptApp(ctk.CTk):
         )
         self.unselect_files_button = ctk.CTkButton(
             self.main_files_action_buttons_frame,
-            text="Unselect File(s)",
+            text="Remove File(s)",
             command=self.unselect_main_files,
         )
         self.unselect_files_button.grid(
@@ -442,9 +424,7 @@ class LLMPromptApp(ctk.CTk):
 
         self.final_prompt_frame = ctk.CTkFrame(self)
         self.final_prompt_frame.grid_rowconfigure(1, weight=1)
-        self.final_prompt_frame.grid_columnconfigure(
-            0, weight=1
-        )
+        self.final_prompt_frame.grid_columnconfigure(0, weight=1)
         self.final_prompt_frame.grid_columnconfigure(1, weight=0)
         ctk.CTkLabel(
             self.final_prompt_frame,
@@ -588,34 +568,22 @@ class LLMPromptApp(ctk.CTk):
             self.grid_rowconfigure(i, weight=0)
 
         if self.file_tree_expanded:
-            self.grid_rowconfigure(
-                2, weight=1
-            )
+            self.grid_rowconfigure(2, weight=1)
             self.file_tree_frame.grid(
                 row=2, column=0, columnspan=2, rowspan=4, padx=10, pady=5, sticky="nsew"
             )
             self.expand_file_tree_button.configure(text="↙")
-            self.expand_prompt_button.configure(
-                text="↗"
-            )
-            self.file_tree_frame.after(
-                10, self.expand_file_tree_button.lift
-            )
+            self.expand_prompt_button.configure(text="↗")
+            self.file_tree_frame.after(10, self.expand_file_tree_button.lift)
 
         elif self.prompt_expanded:
-            self.grid_rowconfigure(
-                2, weight=1
-            )
+            self.grid_rowconfigure(2, weight=1)
             self.final_prompt_frame.grid(
                 row=2, column=0, columnspan=2, rowspan=4, padx=10, pady=5, sticky="nsew"
             )
             self.expand_prompt_button.configure(text="↙")
-            self.expand_file_tree_button.configure(
-                text="↗"
-            )
-            self.final_prompt_frame.after(
-                10, self.expand_prompt_button.lift
-            )
+            self.expand_file_tree_button.configure(text="↗")
+            self.final_prompt_frame.after(10, self.expand_prompt_button.lift)
 
         else:
             for i, weight in self.default_row_weights.items():
@@ -704,9 +672,7 @@ class LLMPromptApp(ctk.CTk):
                     except Exception as e:
                         logging.warning(f"Could not set state for {control}: {e}")
 
-        if (
-            not is_busy and self.use_gitignore_checkbox.winfo_exists()
-        ):
+        if not is_busy and self.use_gitignore_checkbox.winfo_exists():
             try:
                 from gitignore_parser import (
                     parse_gitignore,
@@ -1302,9 +1268,7 @@ class LLMPromptApp(ctk.CTk):
             "ProjectFolder": (
                 str(self.project_folder_path) if self.project_folder_path else ""
             ),
-            "MainFiles": "\n".join(
-                self.main_file_paths
-            ),
+            "MainFiles": "\n".join(self.main_file_paths),
         }
         file_path = self.config_dir / f"{name}.ini"
         try:
@@ -1390,16 +1354,10 @@ class LLMPromptApp(ctk.CTk):
                         message=f"Project folder from config not found:\n{project_folder_str}",
                         icon="warning",
                     )
-                    if (
-                        self.project_folder_path
-                    ):
+                    if self.project_folder_path:
                         self.project_folder_path = None
-                        project_changed_or_set = (
-                            True
-                        )
-            elif (
-                self.project_folder_path
-            ):
+                        project_changed_or_set = True
+            elif self.project_folder_path:
                 self.project_folder_path = None
                 project_changed_or_set = True
 
@@ -1417,9 +1375,7 @@ class LLMPromptApp(ctk.CTk):
                     if file_path_obj.is_file():
                         resolved_path = str(file_path_obj.resolve(strict=False))
                         self.main_files_listbox.insert("END", resolved_path)
-                        self.main_file_paths.append(
-                            resolved_path
-                        )
+                        self.main_file_paths.append(resolved_path)
                         loaded_any_main_files = True
                     else:
                         logging.warning(f"Main file from config not found: {p_str}")
@@ -1432,9 +1388,7 @@ class LLMPromptApp(ctk.CTk):
 
             if project_changed_or_set:
                 self._orchestrate_full_refresh()
-            elif (
-                loaded_any_main_files or not main_files_str
-            ):
+            elif loaded_any_main_files or not main_files_str:
                 self.trigger_generate_prompt_stand_alone()
 
             logging.info(f"Loaded configuration: {selected_name}")
@@ -1449,9 +1403,7 @@ class LLMPromptApp(ctk.CTk):
             logging.error(
                 f"Error loading configuration '{selected_name}': {e}", exc_info=True
             )
-            if (
-                self.config_toplevel and self.config_toplevel.winfo_exists()
-            ):
+            if self.config_toplevel and self.config_toplevel.winfo_exists():
                 CTkMessagebox(
                     master=self.config_toplevel,
                     title="Error",
