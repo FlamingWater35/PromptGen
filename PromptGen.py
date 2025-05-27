@@ -281,6 +281,10 @@ class LLMPromptApp(ctk.CTk):
         self._process_ui_queue()
         self.protocol("WM_DELETE_WINDOW", self._on_closing)
 
+        self.project_location_label.after_idle(
+            lambda: self._on_project_label_configure(None)
+        )
+
     def _on_closing(self):
         logging.info("Application closing...")
         if self.custom_ignore_debounce_timer:
@@ -371,7 +375,8 @@ class LLMPromptApp(ctk.CTk):
         self.right_pane = ctk.CTkFrame(self)
         self.right_pane.grid_columnconfigure(0, weight=1)
         self.right_pane.grid_rowconfigure(1, weight=0)
-        self.right_pane.grid_rowconfigure(3, weight=1)
+        self.right_pane.grid_rowconfigure(4, weight=1)
+
         ctk.CTkLabel(
             self.right_pane,
             text="Instructions for LLM:",
@@ -383,16 +388,29 @@ class LLMPromptApp(ctk.CTk):
         self.instructions_textbox.grid(row=1, column=0, padx=5, pady=5, sticky="nsew")
         self.instructions_textbox.insert("0.0", "Improve my code by...")
         self.instructions_textbox.bind("<KeyRelease>", self._on_instructions_typed)
+
         ctk.CTkLabel(
             self.right_pane, text="Main Files:", font=ctk.CTkFont(weight="bold")
         ).grid(row=2, column=0, padx=5, pady=(10, 0), sticky="w")
+
+        self.project_location_label = ctk.CTkLabel(
+            self.right_pane, text="Project: Not selected", anchor="w"
+        )
+        self.project_location_label.grid(
+            row=3, column=0, padx=5, pady=(2, 5), sticky="ew"
+        )
+        self.project_location_label.bind(
+            "<Configure>", self._on_project_label_configure
+        )
+
         self.main_files_listbox = CTkListbox(self.right_pane, multiple_selection=True)
-        self.main_files_listbox.grid(row=3, column=0, padx=5, pady=5, sticky="nsew")
+        self.main_files_listbox.grid(row=4, column=0, padx=5, pady=5, sticky="nsew")
+
         self.main_files_action_buttons_frame = ctk.CTkFrame(
             self.right_pane, fg_color="transparent"
         )
         self.main_files_action_buttons_frame.grid(
-            row=4, column=0, padx=5, pady=(0, 5), sticky="ew"
+            row=5, column=0, padx=5, pady=(0, 5), sticky="ew"
         )
         self.main_files_action_buttons_frame.grid_columnconfigure(0, weight=1)
         self.main_files_action_buttons_frame.grid_columnconfigure(1, weight=1)
@@ -820,19 +838,24 @@ class LLMPromptApp(ctk.CTk):
             prompt_parts.append("--- MAIN FILE(S) CONTENT ---")
             for file_path_str in main_file_paths_list:
                 file_p = Path(file_path_str)
-                relative_path_str = file_p.name
+                display_path_in_prompt = file_p.name
                 if project_root_path_obj:
                     try:
                         abs_file_p = file_p.resolve(strict=False)
                         abs_project_root = project_root_path_obj.resolve(strict=False)
                         if abs_file_p.is_relative_to(abs_project_root):
-                            relative_path_str = str(
+                            display_path_in_prompt = str(
                                 abs_file_p.relative_to(abs_project_root)
                             )
+                        else:
+                            display_path_in_prompt = str(abs_file_p)
                     except (ValueError, OSError):
-                        pass
+                        display_path_in_prompt = (
+                            str(file_p) if str(file_p) != "." else file_p.name
+                        )
+
                 prompt_parts.append(
-                    f"--- File: {relative_path_str.replace(os.sep, '/')} ---"
+                    f"--- File: {display_path_in_prompt.replace(os.sep, '/')} ---"
                 )
                 prompt_parts.append(read_file_content(file_path_str).strip())
                 prompt_parts.append("--- End File ---")
@@ -859,10 +882,41 @@ class LLMPromptApp(ctk.CTk):
             logging.debug("Chain step 'prompt_done' complete.")
             del self._chain_step
 
+    def _on_project_label_configure(self, event):
+        label = self.project_location_label
+        if not label.winfo_exists():
+            return
+
+        width = label.winfo_width()
+        buffer = 10
+        new_wraplength = width - buffer
+
+        if new_wraplength > 0:
+            if label.cget("wraplength") != new_wraplength:
+                label.configure(wraplength=new_wraplength)
+        elif label.cget("wraplength") != 0:
+            label.configure(wraplength=1)
+
+    def _update_project_location_label(self):
+        if self.project_folder_path and self.project_location_label.winfo_exists():
+            self.project_location_label.configure(
+                text=f"Project location: {self.project_folder_path}"
+            )
+        elif self.project_location_label.winfo_exists():
+            self.project_location_label.configure(text="Project: Not selected")
+
+        if self.project_location_label.winfo_exists():
+            self.project_location_label.after_idle(
+                lambda: self._on_project_label_configure(None)
+            )
+
     def _orchestrate_full_refresh(self):
         if self.active_background_tasks > 0:
             logging.warning("Orchestrator: App busy, full refresh deferred.")
             return
+
+        self._update_project_location_label()
+
         if not self.project_folder_path:
             self._set_textbox_content(self.file_tree_textbox, "")
             self.trigger_generate_prompt_stand_alone()
@@ -964,23 +1018,38 @@ class LLMPromptApp(ctk.CTk):
                 logging.info(f"Project folder selected: {self.project_folder_path}")
 
                 self.main_file_paths = []
-                if self.main_files_listbox.winfo_exists():
-                    self.main_files_listbox.delete("all")
+                self._rebuild_listbox_from_main_file_paths()
                 self._orchestrate_full_refresh()
             else:
                 logging.info("Same project folder selected again. No change.")
         else:
             logging.info("Project folder selection cancelled.")
             if not self.project_folder_path:
+                self._update_project_location_label()
                 self._orchestrate_full_refresh()
 
-    def _update_main_file_paths_from_listbox(self):
-        self.main_file_paths = []
-        if self.main_files_listbox.winfo_exists():
-            for i in range(self.main_files_listbox.size()):
-                self.main_file_paths.append(self.main_files_listbox.get(i))
+    def _get_display_path(self, full_path_str: str) -> str:
+        full_path_obj = Path(full_path_str)
+        if self.project_folder_path:
+            try:
+                abs_full_path = full_path_obj.resolve(strict=True)
+                abs_project_path = self.project_folder_path.resolve(strict=True)
+
+                if abs_full_path.is_relative_to(abs_project_path):
+                    return str(abs_full_path.relative_to(abs_project_path))
+            except (FileNotFoundError, RuntimeError, ValueError):
+                pass
+        return full_path_str
+
+    def _rebuild_listbox_from_main_file_paths(self):
+        if not self.main_files_listbox.winfo_exists():
+            return
+        self.main_files_listbox.delete("all")
+        for full_path_str in self.main_file_paths:
+            display_path = self._get_display_path(full_path_str)
+            self.main_files_listbox.insert("END", display_path)
         logging.debug(
-            f"Updated self.main_file_paths from listbox: {len(self.main_file_paths)} files."
+            f"Rebuilt main_files_listbox with {len(self.main_file_paths)} items."
         )
 
     def add_files_from_folder(self):
@@ -1007,30 +1076,43 @@ class LLMPromptApp(ctk.CTk):
 
             custom_patterns = self._get_custom_ignore_patterns()
             use_gitignore = self.use_gitignore_var.get()
-            current_files_in_listbox = (
-                {
-                    self.main_files_listbox.get(i)
-                    for i in range(self.main_files_listbox.size())
-                }
-                if self.main_files_listbox.winfo_exists()
-                else set()
-            )
-            added_count = 0
 
+            added_count = 0
             try:
                 for item_path_obj in selected_folder_path_obj.iterdir():
                     try:
                         if not item_path_obj.is_file():
                             continue
                     except OSError:
+                        logging.warning(
+                            f"OSError checking if {item_path_obj} is a file. Skipping."
+                        )
                         continue
 
                     item_name = item_path_obj.name
+                    is_ignored_by_project_gitignore = False
                     if (
                         use_gitignore
                         and self.gitignore_matcher
-                        and self.gitignore_matcher(item_path_obj)
+                        and self.project_folder_path
                     ):
+                        try:
+                            resolved_item_path = item_path_obj.resolve(strict=False)
+                            resolved_project_root = self.project_folder_path.resolve(
+                                strict=False
+                            )
+
+                            if resolved_item_path.is_relative_to(resolved_project_root):
+                                if self.gitignore_matcher(item_path_obj):
+                                    is_ignored_by_project_gitignore = True
+                        except (ValueError, OSError) as e:
+                            logging.warning(
+                                f"Could not determine if {item_path_obj} is relative to project {self.project_folder_path} "
+                                f"for .gitignore check: {e}. Assuming not ignored by project .gitignore."
+                            )
+                            pass
+
+                    if is_ignored_by_project_gitignore:
                         continue
                     if _is_custom_ignored(
                         item_path_obj, self.project_folder_path, custom_patterns
@@ -1052,16 +1134,25 @@ class LLMPromptApp(ctk.CTk):
                         continue
 
                     full_path_str = str(item_path_obj.resolve(strict=False))
-                    if full_path_str not in current_files_in_listbox:
-                        self.main_files_listbox.insert("END", full_path_str)
-                        current_files_in_listbox.add(full_path_str)
+                    if full_path_str not in self.main_file_paths:
+                        self.main_file_paths.append(full_path_str)
                         added_count += 1
 
                 if added_count > 0:
-                    self._update_main_file_paths_from_listbox()
+                    self._rebuild_listbox_from_main_file_paths()
                     self.trigger_generate_prompt_stand_alone()
                 logging.info(
                     f"Added {added_count} files from {selected_folder_path_obj.name}"
+                )
+            except PermissionError as e:
+                logging.error(
+                    f"Permission error when trying to iterate/access files in {selected_folder_path_obj}: {e}",
+                )
+                CTkMessagebox(
+                    master=self,
+                    title="Permission Error",
+                    message=f"Cannot access files in the selected folder due to permission issues:\n{selected_folder_path_obj}",
+                    icon="cancel",
                 )
             except Exception as e:
                 logging.error(
@@ -1085,23 +1176,15 @@ class LLMPromptApp(ctk.CTk):
         )
 
         if file_paths_tuple:
-            current_files_in_listbox = (
-                {
-                    self.main_files_listbox.get(i)
-                    for i in range(self.main_files_listbox.size())
-                }
-                if self.main_files_listbox.winfo_exists()
-                else set()
-            )
             added_count = 0
             for p_str in file_paths_tuple:
                 full_path_str = str(Path(p_str).resolve(strict=False))
-                if full_path_str not in current_files_in_listbox:
-                    self.main_files_listbox.insert("END", full_path_str)
-                    current_files_in_listbox.add(full_path_str)
+                if full_path_str not in self.main_file_paths:
+                    self.main_file_paths.append(full_path_str)
                     added_count += 1
+
             if added_count > 0:
-                self._update_main_file_paths_from_listbox()
+                self._rebuild_listbox_from_main_file_paths()
                 self.trigger_generate_prompt_stand_alone()
             logging.info(f"Added {added_count} individual files.")
 
@@ -1113,13 +1196,20 @@ class LLMPromptApp(ctk.CTk):
             CTkMessagebox(
                 master=self,
                 title="Info",
-                message="No files selected in the list to unselect.",
+                message="No files selected in the list to remove.",
                 icon="info",
             )
             return
+
         for index in sorted(selected_indices, reverse=True):
-            self.main_files_listbox.delete(index)
-        self._update_main_file_paths_from_listbox()
+            if 0 <= index < len(self.main_file_paths):
+                del self.main_file_paths[index]
+            else:
+                logging.warning(
+                    f"Attempted to delete out-of-bounds index {index} from main_file_paths"
+                )
+
+        self._rebuild_listbox_from_main_file_paths()
         self.trigger_generate_prompt_stand_alone()
 
     def copy_prompt(self):
@@ -1332,17 +1422,13 @@ class LLMPromptApp(ctk.CTk):
             self._close_config_manager()
 
             project_changed_or_set = False
+            new_project_path = None
             if project_folder_str:
                 loaded_project_path = Path(project_folder_str)
                 if loaded_project_path.is_dir():
-                    if self.project_folder_path != loaded_project_path:
-                        self.project_folder_path = loaded_project_path
-                        self.title(
-                            f"LLM Prompt Generator - {self.project_folder_path.name}"
-                        )
-                        project_changed_or_set = True
+                    new_project_path = loaded_project_path
                     logging.info(
-                        f"Project folder loaded from config: {self.project_folder_path}"
+                        f"Project folder loaded from config: {new_project_path}"
                     )
                 else:
                     logging.warning(
@@ -1354,17 +1440,20 @@ class LLMPromptApp(ctk.CTk):
                         message=f"Project folder from config not found:\n{project_folder_str}",
                         icon="warning",
                     )
-                    if self.project_folder_path:
-                        self.project_folder_path = None
-                        project_changed_or_set = True
-            elif self.project_folder_path:
-                self.project_folder_path = None
+
+            if self.project_folder_path != new_project_path:
+                self.project_folder_path = new_project_path
                 project_changed_or_set = True
+                if self.project_folder_path:
+                    self.title(
+                        f"LLM Prompt Generator - {self.project_folder_path.name}"
+                    )
+                else:
+                    self.title("LLM Prompt Generator")
 
-            if self.main_files_listbox.winfo_exists():
-                self.main_files_listbox.delete("all")
+            self._update_project_location_label()
+
             self.main_file_paths = []
-
             loaded_any_main_files = False
             if main_files_str:
                 potential_paths = [
@@ -1374,7 +1463,6 @@ class LLMPromptApp(ctk.CTk):
                     file_path_obj = Path(p_str)
                     if file_path_obj.is_file():
                         resolved_path = str(file_path_obj.resolve(strict=False))
-                        self.main_files_listbox.insert("END", resolved_path)
                         self.main_file_paths.append(resolved_path)
                         loaded_any_main_files = True
                     else:
@@ -1385,6 +1473,8 @@ class LLMPromptApp(ctk.CTk):
                             message=f"Main file from config not found (skipped):\n{p_str}",
                             icon="warning",
                         )
+
+            self._rebuild_listbox_from_main_file_paths()
 
             if project_changed_or_set:
                 self._orchestrate_full_refresh()
@@ -1403,20 +1493,17 @@ class LLMPromptApp(ctk.CTk):
             logging.error(
                 f"Error loading configuration '{selected_name}': {e}", exc_info=True
             )
-            if self.config_toplevel and self.config_toplevel.winfo_exists():
-                CTkMessagebox(
-                    master=self.config_toplevel,
-                    title="Error",
-                    message=f"Failed to load config: {e}",
-                    icon="cancel",
-                )
-            else:
-                CTkMessagebox(
-                    master=self,
-                    title="Error",
-                    message=f"Failed to load config: {e}",
-                    icon="cancel",
-                )
+            msg_master = (
+                self.config_toplevel
+                if self.config_toplevel and self.config_toplevel.winfo_exists()
+                else self
+            )
+            CTkMessagebox(
+                master=msg_master,
+                title="Error",
+                message=f"Failed to load config: {e}",
+                icon="cancel",
+            )
 
     def _delete_selected_config(self):
         selected_name = (
