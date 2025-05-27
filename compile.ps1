@@ -12,6 +12,6 @@ conda activate "$BASE_PATH\.conda"
 
 black PromptGen.py
 
-nuitka --onefile --standalone --windows-console-mode=disable --file-version=1.0.2 --product-version=1.0.2 --file-description="LLM Prompt Generator" --product-name="PromptGen" --copyright="© 2025 Flaming Water" --windows-icon-from-ico="$BASE_PATH\docs\icon.ico" --include-data-dir="$BASE_PATH\docs=docs" --enable-plugin=tk-inter --include-data-dir="$PACKAGE_PATH\customtkinter=customtkinter" --include-data-dir="$PACKAGE_PATH\CTkMessagebox=CTkMessagebox" --include-data-dir="$PACKAGE_PATH\ctkcomponents=ctkcomponents" --output-dir="$BASE_PATH\main" --enable-plugin=upx --upx-binary="$UPX_PATH" --lto=yes --clang --remove-output PromptGen.py
+nuitka --onefile --standalone --windows-console-mode=disable --file-version=1.0.3 --product-version=1.0.3 --file-description="LLM Prompt Generator" --product-name="PromptGen" --copyright="© 2025 Flaming Water" --windows-icon-from-ico="$BASE_PATH\docs\icon.ico" --include-data-dir="$BASE_PATH\docs=docs" --enable-plugin=tk-inter --include-data-dir="$PACKAGE_PATH\customtkinter=customtkinter" --include-data-dir="$PACKAGE_PATH\CTkMessagebox=CTkMessagebox" --include-data-dir="$PACKAGE_PATH\ctkcomponents=ctkcomponents" --output-dir="$BASE_PATH\main" --enable-plugin=upx --upx-binary="$UPX_PATH" --lto=yes --clang --remove-output PromptGen.py
 
 Start-Sleep -Seconds 3
