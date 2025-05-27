@@ -360,7 +360,7 @@ class LLMPromptApp(ctk.CTk):
         self.custom_ignore_frame.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(
             self.custom_ignore_frame,
-            text="Custom Ignore Patterns (one per line, fnmatch):",
+            text="Custom Ignore Patterns:",
             font=ctk.CTkFont(weight="bold"),
         ).grid(row=0, column=0, padx=5, pady=(5, 0), sticky="w")
         self.custom_ignore_textbox = ctk.CTkTextbox(
