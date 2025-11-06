@@ -14,7 +14,7 @@ import concurrent.futures
 import configparser
 
 logging.basicConfig(
-    level=logging.INFO,  # Set to DEBUG if issues arise
+    level=logging.INFO,
     format="%(asctime)s - %(levelname)s - [%(funcName)s] - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
 )
@@ -22,11 +22,11 @@ logging.basicConfig(
 
 def resource_path(relative_path):
     try:
-        base_path = Path(sys._MEIPASS)  # Nuitka or Pyinstaller (bundled app)
-    except AttributeError:
-        base_path = Path(os.path.abspath(os.path.dirname(__file__)))  # Development
+        base_path = Path(sys._MEIPASS)
+    except Exception:
+        base_path = Path(os.path.abspath("."))
 
-    full_path = base_path / relative_path
+    full_path = Path(os.path.join(base_path, relative_path))
 
     if not full_path.exists():
         logging.error(f"Resource not found: '{full_path}'")
@@ -415,21 +415,30 @@ class LLMPromptApp(ctk.CTk):
         self.main_files_action_buttons_frame.grid_columnconfigure(0, weight=1)
         self.main_files_action_buttons_frame.grid_columnconfigure(1, weight=1)
         self.main_files_action_buttons_frame.grid_columnconfigure(2, weight=1)
+        self.main_files_action_buttons_frame.grid_columnconfigure(3, weight=1)
         self.add_folder_files_button = ctk.CTkButton(
             self.main_files_action_buttons_frame,
-            text="Add Folder Contents",
+            text="Add Folder",
             command=self.add_files_from_folder,
         )
         self.add_folder_files_button.grid(
             row=0, column=0, padx=(0, 2), pady=5, sticky="ew"
         )
+        self.add_folder_recursively_button = ctk.CTkButton(
+            self.main_files_action_buttons_frame,
+            text="Add Folder Recursively",
+            command=self.add_files_from_folder_recursively,
+        )
+        self.add_folder_recursively_button.grid(
+            row=0, column=1, padx=2, pady=5, sticky="ew"
+        )
         self.add_individual_files_button = ctk.CTkButton(
             self.main_files_action_buttons_frame,
-            text="Add Individual Files",
+            text="Add File(s)",
             command=self.add_individual_files,
         )
         self.add_individual_files_button.grid(
-            row=0, column=1, padx=2, pady=5, sticky="ew"
+            row=0, column=2, padx=2, pady=5, sticky="ew"
         )
         self.unselect_files_button = ctk.CTkButton(
             self.main_files_action_buttons_frame,
@@ -437,7 +446,7 @@ class LLMPromptApp(ctk.CTk):
             command=self.unselect_main_files,
         )
         self.unselect_files_button.grid(
-            row=0, column=2, padx=(2, 0), pady=5, sticky="ew"
+            row=0, column=3, padx=(2, 0), pady=5, sticky="ew"
         )
 
         self.final_prompt_frame = ctk.CTkFrame(self)
@@ -480,6 +489,7 @@ class LLMPromptApp(ctk.CTk):
             self.custom_ignore_textbox,
             self.instructions_textbox,
             self.add_folder_files_button,
+            self.add_folder_recursively_button,
             self.add_individual_files_button,
             self.unselect_files_button,
             self.main_files_listbox,
@@ -947,10 +957,26 @@ class LLMPromptApp(ctk.CTk):
         self._chain_step = "prompt_done"
         self.trigger_generate_prompt_stand_alone(is_part_of_chain=True)
 
+    def _validate_main_file_paths(self):
+        original_count = len(self.main_file_paths)
+        existing_files = [p for p in self.main_file_paths if Path(p).is_file()]
+        if len(existing_files) < original_count:
+            logging.info(
+                f"Removed {original_count - len(existing_files)} non-existent "
+                "files from the main files list."
+            )
+            self.main_file_paths = existing_files
+            return True
+        return False
+
     def trigger_generate_prompt_stand_alone(self, event=None, is_part_of_chain=False):
         if not is_part_of_chain and self.active_background_tasks > 0:
             logging.warning("Trigger Prompt: App busy, request deferred.")
             return
+
+        if self._validate_main_file_paths():
+            self._rebuild_listbox_from_main_file_paths()
+
         logging.debug(
             f"Triggering prompt generation (is_part_of_chain={is_part_of_chain})."
         )
@@ -1165,6 +1191,128 @@ class LLMPromptApp(ctk.CTk):
                     message=f"Could not read folder contents: {e}",
                     icon="cancel",
                 )
+
+    def add_files_from_folder_recursively(self):
+        logging.debug("Adding files from folder (recursive)...")
+        if not self.project_folder_path:
+            CTkMessagebox(
+                master=self,
+                title="No Project",
+                message="Please open a project folder first.",
+                icon="warning",
+            )
+            return
+
+        start_dir = str(self.project_folder_path)
+        folder_path_str = filedialog.askdirectory(
+            title="Select Folder to Add Recursively", initialdir=start_dir
+        )
+
+        if not folder_path_str:
+            return
+
+        selected_folder_path_obj = Path(folder_path_str)
+        logging.info(
+            f"Folder selected for recursive file addition: {selected_folder_path_obj}"
+        )
+
+        custom_patterns = self._get_custom_ignore_patterns()
+        use_gitignore = self.use_gitignore_var.get()
+        added_count = 0
+
+        try:
+            for root, dirs, files in os.walk(str(selected_folder_path_obj)):
+                root_path = Path(root)
+
+                dirs[:] = [
+                    d
+                    for d in dirs
+                    if not self._is_dir_ignored(
+                        root_path / d, use_gitignore, custom_patterns
+                    )
+                ]
+
+                for filename in files:
+                    file_path = root_path / filename
+                    if not self._is_file_ignored(
+                        file_path, use_gitignore, custom_patterns
+                    ):
+                        full_path_str = str(file_path.resolve(strict=False))
+                        if full_path_str not in self.main_file_paths:
+                            self.main_file_paths.append(full_path_str)
+                            added_count += 1
+
+            if added_count > 0:
+                self._rebuild_listbox_from_main_file_paths()
+                self.trigger_generate_prompt_stand_alone()
+            logging.info(
+                f"Added {added_count} files recursively from {selected_folder_path_obj.name}"
+            )
+            CTkMessagebox(
+                master=self,
+                title="Success",
+                message=f"Added {added_count} files.",
+                icon="check",
+            )
+
+        except Exception as e:
+            logging.error(
+                f"Error during recursive file addition from {selected_folder_path_obj}: {e}",
+                exc_info=True,
+            )
+            CTkMessagebox(
+                master=self,
+                title="Error",
+                message=f"An unexpected error occurred: {e}",
+                icon="cancel",
+            )
+
+    def _is_dir_ignored(self, dir_path, use_gitignore, custom_patterns):
+        dir_name = dir_path.name
+        if (
+            use_gitignore
+            and self.gitignore_matcher
+            and self.gitignore_matcher(dir_path)
+        ):
+            return True
+        if _is_custom_ignored(dir_path, self.project_folder_path, custom_patterns):
+            return True
+        if (
+            dir_name in FALLBACK_IGNORE_DIRS
+            or any(
+                fnmatch.fnmatch(dir_name, pat)
+                for pat in FALLBACK_IGNORE_DIRS
+                if "*" in pat
+            )
+            or (dir_name.startswith(".") and dir_name not in {".well-known"})
+        ):
+            return True
+        return False
+
+    def _is_file_ignored(self, file_path, use_gitignore, custom_patterns):
+        file_name = file_path.name
+        if (
+            use_gitignore
+            and self.gitignore_matcher
+            and self.gitignore_matcher(file_path)
+        ):
+            return True
+        if _is_custom_ignored(file_path, self.project_folder_path, custom_patterns):
+            return True
+        if (
+            file_name in FALLBACK_IGNORE_FILES
+            or any(
+                fnmatch.fnmatch(file_name, pat)
+                for pat in FALLBACK_IGNORE_FILES
+                if "*" in pat
+            )
+            or (
+                file_name.startswith(".")
+                and file_name not in {".gitignore", ".gitattributes", ".gitmodules"}
+            )
+        ):
+            return True
+        return False
 
     def add_individual_files(self):
         logging.debug("Adding individual main files...")
