@@ -13,7 +13,7 @@ Generates a prompt including:
 ## Showcase
 
 <p align="center">
-   <img src="/assets/PromptGen_showcase.png" alt="Main screen of the application" width="100%">
+   <img src="/screenshots/PromptGen_showcase.png" alt="Main screen of the application" width="100%">
 </p>
 
 ## Installation
