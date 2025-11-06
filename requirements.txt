@@ -11,4 +11,4 @@ configparser
 
 # Formatting and compiling
 black
-nuitka
+pyinstaller
