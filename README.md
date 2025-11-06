@@ -1,5 +1,8 @@
 # PromptGen
 
+[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![GitHub release (latest by date)](https://img.shields.io/github/v/release/FlamingWater35/PromptGen)](https://github.com/FlamingWater35/PromptGen/releases)
+
 A Python application to generate prompts for LLMs.
 
 ## Features
