@@ -228,7 +228,7 @@ class LLMPromptApp(ctk.CTk):
         y = (screen_height - window_height) // 2
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
 
-        icon_path_str = resource_path("docs/icon.ico")
+        icon_path_str = resource_path("promptgen/assets/icon.ico")
         if icon_path_str:
             self.icon_path = icon_path_str
             self.iconbitmap(self.icon_path, default=self.icon_path)
